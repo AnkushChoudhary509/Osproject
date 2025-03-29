@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Replacement Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #FED2E2;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body class="flex justify-center items-center min-h-screen">
+    <div class="bg-white shadow-lg p-6 rounded-xl w-full max-w-2xl">
+        <h2 class="text-2xl font-bold text-center text-[#8F87F1]">Page Replacement Algorithm Simulator</h2>
+        <p class="text-center text-gray-700">Aangad Ranjit Singh (12300838) | Ankush Choudhary (12300918) | Aarin Tyagi (12301204)</p>
+        
+        <div class="mt-4 space-y-4">
+            <label class="block text-[#C68EFD] font-semibold">Reference String:</label>
+            <input type="text" id="referenceString" placeholder="e.g. 7,0,1,2,0,3,0,4,2,3,0,3,2,1,2,0,1,7,0,1" 
+                   value="7,0,1,2,0,3,0,4,2,3,0,3,2,1,2,0,1,7,0,1" class="w-full p-2 border rounded-md">
+            
+            <label class="block text-[#C68EFD] font-semibold">Number of Frames:</label>
+            <input type="number" id="frames" min="1" max="10" value="3" class="w-full p-2 border rounded-md">
+            
+            <label class="block text-[#C68EFD] font-semibold">Select Algorithm:</label>
+            <select id="algorithm" class="w-full p-2 border rounded-md">
+                <option value="fifo">FIFO</option>
+                <option value="lru">LRU</option>
+                <option value="optimal">Optimal</option>
+            </select>
+            
+            <button onclick="simulate()" class="w-full bg-[#E9A5F1] text-white py-2 rounded-md hover:bg-[#C68EFD]">Run Simulation</button>
+        </div>
+        
+        <div class="mt-6">
+            <h3 class="text-xl font-semibold text-center text-[#8F87F1]">Simulation Result</h3>
+            <p id="totalFaults" class="text-center font-medium mt-2 text-gray-700">Total Page Faults: 0</p>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse mt-4">
+                    <thead>
+                        <tr class="bg-[#C68EFD] text-white">
+                            <th class="p-2">Step</th>
+                            <th class="p-2">Reference</th>
+                            <th class="p-2">Frames</th>
+                            <th class="p-2">Page Fault</th>
+                            <th class="p-2">Replaced</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultTable" class="bg-white">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="mt-6">
+            <h3 class="text-xl font-semibold text-center text-[#8F87F1]">Page Faults Over Time</h3>
+            <div class="mt-4" style="height: 300px;">
+                <canvas id="pageFaultChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentChart = null;
+        
+        function simulate() {
+            const referenceString = document.getElementById("referenceString").value.split(",").map(Number);
+            const frames = parseInt(document.getElementById("frames").value);
+            const algorithm = document.getElementById("algorithm").value;
+            
+            const tableBody = document.querySelector("#resultTable");
+            tableBody.innerHTML = "";
+            
+            let result;
+            if (algorithm === "fifo") {
+                result = fifoAlgorithm(referenceString, frames);
+            } else if (algorithm === "lru") {
+                result = lruAlgorithm(referenceString, frames);
+            } else if (algorithm === "optimal") {
+                result = optimalAlgorithm(referenceString, frames);
+            }
+            
+            displayResults(result, tableBody);
+            updateChart(result.pageFaults, result.faultHistory);
+            document.getElementById("totalFaults").textContent = `Total Page Faults: ${result.pageFaults}`;
+        }
+        
+        function fifoAlgorithm(referenceString, frames) {
+            const memory = [];
+            const queue = []; // For FIFO order
+            let pageFaults = 0;
+            const faultHistory = [];
+            const steps = [];
+            
+            referenceString.forEach((page, index) => {
+                const step = { page, frames: [...memory], fault: false, replaced: null };
+                
+                if (!memory.includes(page)) {
+                    if (memory.length < frames) {
+                        memory.push(page);
+                        queue.push(page);
+                    } else {
+                        const replacedPage = queue.shift();
+                        const replacedIndex = memory.indexOf(replacedPage);
+                        memory[replacedIndex] = page;
+                        queue.push(page);
+                        step.replaced = replacedPage;
+                    }
+                    pageFaults++;
+                    step.fault = true;
+                }
+                
+                faultHistory.push(pageFaults);
+                steps.push(step);
+            });
+            
+            return { pageFaults, faultHistory, steps };
+        }
+        
+        function lruAlgorithm(referenceString, frames) {
+            const memory = [];
+            const accessTime = {};
+            let pageFaults = 0;
+            const faultHistory = [];
+            const steps = [];
+            
+            referenceString.forEach((page, index) => {
+                const step = { page, frames: [...memory], fault: false, replaced: null };
+                
+                // Update access time for current page
+                accessTime[page] = index;
+                
+                if (!memory.includes(page)) {
+                    if (memory.length < frames) {
+                        memory.push(page);
+                    } else {
+                        // Find LRU page
+                        let lruPage = null;
+                        let minTime = Infinity;
+                        for (const p of memory) {
+                            if (accessTime[p] < minTime) {
+                                minTime = accessTime[p];
+                                lruPage = p;
+                            }
+                        }
+                        // Replace LRU page
+                        const replacedIndex = memory.indexOf(lruPage);
+                        step.replaced = memory[replacedIndex];
+                        memory[replacedIndex] = page;
+                    }
+                    pageFaults++;
+                    step.fault = true;
+                }
+                
+                faultHistory.push(pageFaults);
+                steps.push(step);
+            });
+            
+            return { pageFaults, faultHistory, steps };
+        }
+        
+        function optimalAlgorithm(referenceString, frames) {
+            const memory = [];
+            let pageFaults = 0;
+            const faultHistory = [];
+            const steps = [];
+            
+            referenceString.forEach((page, currentIndex) => {
+                const step = { page, frames: [...memory], fault: false, replaced: null };
+                
+                if (!memory.includes(page)) {
+                    if (memory.length < frames) {
+                        memory.push(page);
+                    } else {
+                        // Find page that won't be used for longest time
+                        let farthestIndex = -1;
+                        let replacePage = null;
+                        
+                        for (const p of memory) {
+                            // Find next use of this page
+                            let nextUse = referenceString.slice(currentIndex + 1).indexOf(p);
+                            
+                            if (nextUse === -1) {
+                                replacePage = p;
+                                break;
+                            } else if (nextUse > farthestIndex) {
+                                farthestIndex = nextUse;
+                                replacePage = p;
+                            }
+                        }
+                        
+                        // Replace the selected page
+                        const replacedIndex = memory.indexOf(replacePage);
+                        step.replaced = memory[replacedIndex];
+                        memory[replacedIndex] = page;
+                    }
+                    pageFaults++;
+                    step.fault = true;
+                }
+                
+                faultHistory.push(pageFaults);
+                steps.push(step);
+            });
+            
+            return { pageFaults, faultHistory, steps };
+        }
+        
+        function displayResults(result, tableBody) {
+            result.steps.forEach((step, index) => {
+                const row = document.createElement("tr");
+                if (step.fault) {
+                    row.className = "bg-[#FED2E2]";
+                }
+                
+                row.innerHTML = `
+                    <td class="p-2 border text-center">${index + 1}</td>
+                    <td class="p-2 border text-center">${step.page}</td>
+                    <td class="p-2 border text-center">${step.frames.join(", ") || "-"}</td>
+                    <td class="p-2 border text-center">${step.fault ? "Yes" : "No"}</td>
+                    <td class="p-2 border text-center">${step.replaced || "-"}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        function updateChart(totalFaults, faultHistory) {
+            const ctx = document.getElementById("pageFaultChart").getContext("2d");
+            
+            // Destroy previous chart if exists
+            if (currentChart) {
+                currentChart.destroy();
+            }
+            
+            currentChart = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: faultHistory.map((_, i) => i + 1),
+                    datasets: [{
+                        label: "Cumulative Page Faults",
+                        data: faultHistory,
+                        borderColor: "#8F87F1",
+                        backgroundColor: "rgba(143, 135, 241, 0.1)",
+                        borderWidth: 2,
+                        pointBackgroundColor: "#C68EFD",
+                        pointRadius: 3,
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Page Faults'
+                            },
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Reference Number'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Total Page Faults: ${totalFaults}`,
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
